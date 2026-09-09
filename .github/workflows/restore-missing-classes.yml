@@ -1,0 +1,87 @@
+name: Restaurar clases faltantes del ZIP original
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-missing-classes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout con historial completo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Recuperar ZIP histórico y restaurar clases
+        shell: bash
+        run: |
+          set -euo pipefail
+          HISTORIC_COMMIT='4c21c249ab7d727f4420cd1c96ae184380e18263'
+          git show "${HISTORIC_COMMIT}:.upload/repo_bundle.zip" > /tmp/bundle.dat
+
+          for n in 0 1 2 3 4; do
+            if python3 -c "import zipfile,sys; sys.exit(0 if zipfile.is_zipfile('/tmp/bundle.dat') else 1)"; then
+              break
+            fi
+            python3 -c "from pathlib import Path; import base64; p=Path('/tmp/bundle.dat'); p.write_bytes(base64.b64decode(p.read_bytes(), validate=False))"
+          done
+
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          p = Path('/tmp/bundle.dat')
+          if not zipfile.is_zipfile(p):
+              raise SystemExit('El paquete histórico no pudo convertirse en un ZIP válido')
+          out = Path('/tmp/marc-restore')
+          out.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(p) as z:
+              z.extractall(out)
+          PY
+
+          SRC=/tmp/marc-restore
+          REPAIR='src/main/java/mx/ucol/marc2bf/util/MarcRepairService.java'
+          CONVERTER='src/main/java/mx/ucol/marc2bf/bibframe/MarcToBibframeConverter.java'
+
+          if [ ! -f "$SRC/$REPAIR" ] || [ ! -f "$SRC/$CONVERTER" ]; then
+            echo 'No se encontraron las clases en la raíz del paquete; buscando una carpeta contenedora...'
+            REPAIR_FOUND=$(find "$SRC" -type f -path "*/$REPAIR" -print -quit)
+            CONVERTER_FOUND=$(find "$SRC" -type f -path "*/$CONVERTER" -print -quit)
+            test -n "$REPAIR_FOUND"
+            test -n "$CONVERTER_FOUND"
+            mkdir -p "$(dirname "$REPAIR")" "$(dirname "$CONVERTER")"
+            cp "$REPAIR_FOUND" "$REPAIR"
+            cp "$CONVERTER_FOUND" "$CONVERTER"
+          else
+            mkdir -p "$(dirname "$REPAIR")" "$(dirname "$CONVERTER")"
+            cp "$SRC/$REPAIR" "$REPAIR"
+            cp "$SRC/$CONVERTER" "$CONVERTER"
+          fi
+
+          test -s "$REPAIR"
+          test -s "$CONVERTER"
+          grep -q 'class MarcRepairService' "$REPAIR"
+          grep -q 'class MarcToBibframeConverter' "$CONVERTER"
+
+          echo "Restaurado: $REPAIR ($(wc -c < "$REPAIR") bytes)"
+          echo "Restaurado: $CONVERTER ($(wc -c < "$CONVERTER") bytes)"
+
+      - name: Guardar restauración y retirar workflow temporal
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/restore-missing-classes.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Restaura clases Java faltantes desde el ZIP original'
+          git push origin HEAD:main
