@@ -13,64 +13,50 @@ jobs:
   restore:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout con historial completo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Reconstruir ZIP histórico y restaurar clases
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Reconstruir clases desde el ZIP original
         shell: bash
         run: |
           set -euo pipefail
-          HIST='dbc715ffad21534c6ed95cf7c2daa94eb764a7fa'
-          : > /tmp/bundle.b64
-          for part in chunk00 chunk01 repo_bundle.zip chunk03 chunk04 chunk05 chunk06 chunk07 chunk08 chunk09; do
-            git show "${HIST}:.upload/${part}" >> /tmp/bundle.b64
-          done
-
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, zipfile
-
-          b64 = Path('/tmp/bundle.b64').read_bytes().replace(b'\n', b'').replace(b'\r', b'')
-          pad = (-len(b64)) % 4
-          if pad:
-              b64 += b'=' * pad
-          raw = base64.b64decode(b64, validate=False)
-          Path('/tmp/bundle.zip').write_bytes(raw)
-          if not zipfile.is_zipfile('/tmp/bundle.zip'):
-              raise SystemExit('El paquete reconstruido no es un ZIP válido')
-          out = Path('/tmp/marc-restore')
-          out.mkdir(parents=True, exist_ok=True)
-          with zipfile.ZipFile('/tmp/bundle.zip') as z:
-              z.extractall(out)
-              print('ZIP válido con', len(z.infolist()), 'entradas')
-          PY
-
           REPAIR='src/main/java/mx/ucol/marc2bf/util/MarcRepairService.java'
           CONVERTER='src/main/java/mx/ucol/marc2bf/bibframe/MarcToBibframeConverter.java'
-          REPAIR_FOUND=$(find /tmp/marc-restore -type f -path "*/$REPAIR" -print -quit)
-          CONVERTER_FOUND=$(find /tmp/marc-restore -type f -path "*/$CONVERTER" -print -quit)
-
-          test -n "$REPAIR_FOUND"
-          test -n "$CONVERTER_FOUND"
           mkdir -p "$(dirname "$REPAIR")" "$(dirname "$CONVERTER")"
-          cp "$REPAIR_FOUND" "$REPAIR"
-          cp "$CONVERTER_FOUND" "$CONVERTER"
 
-          test -s "$REPAIR"
-          test -s "$CONVERTER"
+          cat .restore/repair00 .restore/repair01 .restore/repair02 .restore/repair03 .restore/repair04 \
+            | base64 -d > "$REPAIR"
+
+          cat .restore/converter00 .restore/converter01 .restore/converter0203 \
+              .restore/converter0405 .restore/converter0607 .restore/converter0809 \
+              .restore/converter10 \
+            | base64 -d > "$CONVERTER"
+
+          test "$(wc -c < "$REPAIR")" -eq 21381
+          test "$(wc -c < "$CONVERTER")" -eq 49161
+          echo 'c73c1c7cf19293c3cd05844954f85de86662e483463a34ba03d2a67ae00dc447  src/main/java/mx/ucol/marc2bf/util/MarcRepairService.java' | sha256sum -c -
+          echo '635aacbba70727dd1fac649b495b416e6ec2a63b38256b9d3b15efd51db6ae0b  src/main/java/mx/ucol/marc2bf/bibframe/MarcToBibframeConverter.java' | sha256sum -c -
           grep -q 'class MarcRepairService' "$REPAIR"
           grep -q 'class MarcToBibframeConverter' "$CONVERTER"
 
-          echo "Restaurado: $REPAIR ($(wc -c < "$REPAIR") bytes)"
-          echo "Restaurado: $CONVERTER ($(wc -c < "$CONVERTER") bytes)"
+      - name: Compilar y ejecutar pruebas
+        run: mvn -q test
 
-      - name: Guardar restauración y retirar workflow temporal
+      - name: Guardar restauración y limpiar temporales
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .restore
           rm -f .github/workflows/restore-missing-classes.yml
           rmdir .github/workflows 2>/dev/null || true
           rmdir .github 2>/dev/null || true
