@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   unpack:
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Completar carga MARC21-BIBFRAME'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, 'Completar carga MARC21-BIBFRAME')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,9 +19,10 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Descomprimir proyecto y documentación
+      - name: Decodificar y descomprimir proyecto y documentación
         run: |
-          unzip -o .upload/repo_bundle.zip -d .
+          base64 -d .upload/repo_bundle.zip > /tmp/repo_bundle.zip
+          unzip -o /tmp/repo_bundle.zip -d .
           rm -rf .upload
           rm -f .github/workflows/unpack-bundle.yml
           rmdir .github/workflows 2>/dev/null || true
