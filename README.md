@@ -63,7 +63,6 @@ mvn compile -Dexec.args="catalogo.mrc salida/catalogo-bibframe.ttl --format turt
 
 La opción `--validate` relee el RDF generado para comprobar su sintaxis.
 
-
 ## Reparar automáticamente un MARC problemático (`--repair`)
 
 Si el archivo original fue exportado en UTF-16LE/UTF-16BE, contiene BOM, usa marcadores textuales como `^a`/`^b` en lugar de `0x1F`, o sus longitudes ISO2709 quedaron desajustadas al recodificarlo, usa `--repair`:
@@ -101,6 +100,108 @@ O con los scripts incluidos:
 ```
 
 Para un MARC ISO2709 ya correcto **no necesitas** `--repair`.
+
+## Reparación usando el JAR ejecutable
+
+Después de compilar el proyecto con:
+
+```bash
+mvn clean package
+```
+
+Maven genera el JAR ejecutable con todas las dependencias:
+
+```text
+target/marc21-bibframe-java-1.1.0-all.jar
+```
+
+El `Main-Class` del JAR es `mx.ucol.marc2bf.cli.ConverterCli`, por lo que `java -jar` ejecuta directamente el conversor.
+
+### Reparar y convertir a BIBFRAME en una sola orden
+
+Esta es la forma recomendada cuando el objetivo final es obtener RDF/BIBFRAME. La opción `--repair` repara el MARC en un archivo temporal, lo valida y después continúa con la conversión. El archivo MARC original no se modifica.
+
+Ejemplo con Turtle:
+
+```bash
+java -jar target/marc21-bibframe-java-1.1.0-all.jar \
+  catalogo.marc \
+  salida/catalogo.ttl \
+  --repair \
+  --format turtle \
+  --report salida/reporte.csv \
+  --validate
+```
+
+Ejemplo con `fichas_siabuc.iso` y salida RDF/XML:
+
+```bash
+java -jar target/marc21-bibframe-java-1.1.0-all.jar \
+  fichas_siabuc.iso \
+  salida/catalogo.rdf \
+  --repair \
+  --format rdfxml \
+  --report salida/reporte.csv \
+  --validate
+```
+
+Durante la ejecución deben aparecer mensajes semejantes a:
+
+```text
+Reparación MARC activada (--repair).
+MARC reparado y validado antes de la conversión.
+Codificación: UTF-16LE con BOM -> UTF-8
+Marcadores ^x convertidos: ...
+Registros reparados: ...
+```
+
+Al terminar se genera el RDF indicado y, si se especificó `--report`, también el CSV. El MARC reparado intermedio se elimina automáticamente.
+
+### Reparar solamente el MARC y conservar el archivo reparado
+
+El JAR también contiene `RepairCli`, pero como el manifiesto del JAR apunta al conversor, para ejecutar únicamente la reparación se usa `java -cp` indicando la clase principal:
+
+```bash
+java -cp target/marc21-bibframe-java-1.1.0-all.jar \
+  mx.ucol.marc2bf.cli.RepairCli \
+  catalogo.marc \
+  salida/catalogo-reparado.mrc
+```
+
+Para `fichas_siabuc.iso`:
+
+```bash
+java -cp target/marc21-bibframe-java-1.1.0-all.jar \
+  mx.ucol.marc2bf.cli.RepairCli \
+  fichas_siabuc.iso \
+  salida/fichas_siabuc-reparado.mrc
+```
+
+Esta modalidad conserva el MARC reparado y muestra un resumen con la codificación detectada, cantidad de marcadores `^x` convertidos, registros reconstruidos y validados, tamaños de entrada/salida y ruta del archivo final.
+
+Por defecto `RepairCli` convierte marcadores textuales `^a`, `^b`, `^0`, etc. al delimitador MARC `0x1F`. Si el archivo usa `^` como carácter literal y no quieres esa conversión, agrega `--no-caret`:
+
+```bash
+java -cp target/marc21-bibframe-java-1.1.0-all.jar \
+  mx.ucol.marc2bf.cli.RepairCli \
+  catalogo.marc \
+  salida/catalogo-reparado.mrc \
+  --no-caret
+```
+
+### Qué repara el proceso
+
+La implementación de `MarcRepairService` realiza este flujo antes de validar el ISO2709:
+
+1. detecta UTF-16LE o UTF-16BE, con BOM o heurísticamente sin BOM;
+2. normaliza el contenido a UTF-8 sin BOM;
+3. opcionalmente convierte `^a`, `^b`, `^0`, etc. al delimitador MARC `0x1F`;
+4. reconstruye las entradas del Directory usando las longitudes reales en bytes UTF-8;
+5. recalcula la longitud de cada registro y el Base Address del Leader;
+6. establece `Leader/09 = a` y `Leader/20-23 = 4500`;
+7. valida que la estructura ISO2709 reconstruida sea consistente antes de escribir la salida.
+
+> **Importante:** el archivo de entrada y el de salida de la reparación deben ser distintos. El código rechaza explícitamente usar la misma ruta para ambos.
 
 ## Otros formatos
 
