@@ -19,10 +19,47 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Decodificar y descomprimir proyecto y documentación
+      - name: Detectar, decodificar y descomprimir paquete
         run: |
-          base64 -d .upload/repo_bundle.zip > /tmp/repo_bundle.zip
-          unzip -o /tmp/repo_bundle.zip -d .
+          cp .upload/repo_bundle.zip /tmp/bundle.dat
+          echo "Paquete inicial: $(wc -c < /tmp/bundle.dat) bytes"
+          file /tmp/bundle.dat || true
+
+          for n in 1 2 3 4; do
+            if python3 - <<'PY'
+import zipfile
+raise SystemExit(0 if zipfile.is_zipfile('/tmp/bundle.dat') else 1)
+PY
+            then
+              echo "ZIP válido detectado en nivel $((n-1))"
+              break
+            fi
+
+            echo "Intentando decodificación Base64 nivel $n"
+            python3 - <<'PY'
+from pathlib import Path
+import base64
+p=Path('/tmp/bundle.dat')
+data=p.read_bytes()
+try:
+    decoded=base64.b64decode(data, validate=False)
+except Exception as e:
+    raise SystemExit(f'No se pudo decodificar Base64: {e}')
+p.write_bytes(decoded)
+print(f'Decodificado: {len(decoded)} bytes')
+PY
+          done
+
+          python3 - <<'PY'
+import zipfile
+p='/tmp/bundle.dat'
+if not zipfile.is_zipfile(p):
+    raise SystemExit('El paquete temporal no llegó a convertirse en un ZIP válido')
+with zipfile.ZipFile(p) as z:
+    print(f'ZIP válido con {len(z.infolist())} entradas')
+    z.extractall('.')
+PY
+
           rm -rf .upload
           rm -f .github/workflows/unpack-bundle.yml
           rmdir .github/workflows 2>/dev/null || true
