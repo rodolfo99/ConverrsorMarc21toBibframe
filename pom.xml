@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>mx.ucol</groupId>
+    <artifactId>marc21-bibframe-java</artifactId>
+    <version>1.1.0</version>
+    <name>MARC21 to BIBFRAME Java</name>
+    <description>Conversor MARC21 ISO2709 a BIBFRAME RDF con Marc4J y Apache Jena.</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>21</maven.compiler.release>
+        <marc4j.version>2.9.6</marc4j.version>
+        <jena.version>6.2.0</jena.version>
+        <junit.version>5.13.4</junit.version>
+        <slf4j.version>2.0.17</slf4j.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.marc4j</groupId>
+            <artifactId>marc4j</artifactId>
+            <version>${marc4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.jena</groupId>
+            <artifactId>apache-jena-libs</artifactId>
+            <version>${jena.version}</version>
+            <type>pom</type>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.3</version>
+                <configuration>
+                    <useModulePath>false</useModulePath>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <id>generar</id>
+                        <goals><goal>java</goal></goals>
+                        <configuration>
+                            <mainClass>mx.ucol.marc2bf.cli.GeneratorCli</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>convertir</id>
+                        <goals><goal>java</goal></goals>
+                        <configuration>
+                            <mainClass>mx.ucol.marc2bf.cli.ConverterCli</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>inspeccionar</id>
+                        <goals><goal>java</goal></goals>
+                        <configuration>
+                            <mainClass>mx.ucol.marc2bf.cli.InspectCli</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>reparar</id>
+                        <goals><goal>java</goal></goals>
+                        <configuration>
+                            <mainClass>mx.ucol.marc2bf.cli.RepairCli</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>all</shadedClassifierName>
+                            <transformers>
+                                <!-- Apache Jena usa ServiceLoader. Este transformer fusiona
+                                     correctamente META-INF/services dentro del fat JAR. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>mx.ucol.marc2bf.cli.ConverterCli</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

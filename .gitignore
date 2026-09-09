@@ -1,0 +1,9 @@
+target/
+salida/
+*.mrc
+*.ttl
+*.rdf
+*.jsonld
+*.nt
+.idea/
+*.iml
