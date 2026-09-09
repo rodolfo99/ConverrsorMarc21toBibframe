@@ -1,22 +1,22 @@
 name: Completar carga del proyecto
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.upload/repo_bundle.zip'
-      - '.github/workflows/unpack-bundle.yml'
+  issues:
+    types: [opened]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   unpack:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Completar carga MARC21-BIBFRAME'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Descomprimir proyecto y documentación
